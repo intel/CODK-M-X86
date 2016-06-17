@@ -21,6 +21,7 @@
 #include <stdio.h>
 #include <string.h>
 #include <device.h>
+#include <uart.h>
 #include <zephyr.h>
 //#include <reboot.h>
 
@@ -45,6 +46,9 @@
 #define RSTC_WARM_RESET	(1 << 1)
 #define RSTC_COLD_RESET (1 << 3)
 
+#define CDC_ACM_DEVICE "CDC_ACM"
+struct device *dev;
+bool usbSetupDone = false;
 
 void start_arc(unsigned int reset_vector)
 {
@@ -79,5 +83,24 @@ void main(void)
 	uint32_t *reset_vector;
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
+	dev = device_get_binding(CDC_ACM_DEVICE);
+	usbSetupDone = true;
 }
 
+extern "C" void baudrateReset(void)
+{
+	PRINT("baudrateReset task\r\n");
+	uint32_t baudrate, ret = 0;
+	while(!usbSetupDone);
+	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);	
+	
+	while(1)
+	{
+		ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
+		if(baudrate == 1200)
+		{
+			reboot();
+		}
+		task_sleep(100);
+	}
+}
