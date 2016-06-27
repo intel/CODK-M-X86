@@ -34,7 +34,7 @@
 #endif
 
 #include "soc.h"
-#include "shared_mem.h"
+#include "curie_shared_mem.h"
 
 #define SCSS_SS_CFG_REG (uint32_t*)0xb0800600
 #define SCSS_SS_STS_REG (uint32_t*)0xb0800604
@@ -58,20 +58,13 @@ bool usbSetupDone = false;
 /**
  * Use the following defines just to make the tips of your finger happier.
  */
-/**
-#define Rx_BUFF cdc_acm_shared_rx_buffer.data
-#define Rx_HEAD cdc_acm_shared_rx_buffer.head
-#define Rx_TAIL cdc_acm_shared_rx_buffer.tail
-#define Tx_BUFF cdc_acm_shared_tx_buffer.data
-#define Tx_HEAD cdc_acm_shared_tx_buffer.head
-#define Tx_TAIL cdc_acm_shared_tx_buffer.tail
-**/
-#define Rx_BUFF shared_data->cdc_acm_shared_rx_buffer.data
-#define Rx_HEAD shared_data->cdc_acm_shared_rx_buffer.head
-#define Rx_TAIL shared_data->cdc_acm_shared_rx_buffer.tail
-#define Tx_BUFF shared_data->cdc_acm_shared_tx_buffer.data
-#define Tx_HEAD shared_data->cdc_acm_shared_tx_buffer.head
-#define Tx_TAIL shared_data->cdc_acm_shared_tx_buffer.tail
+
+#define Rx_BUFF curie_shared_data->cdc_acm_shared_rx_buffer.data
+#define Rx_HEAD curie_shared_data->cdc_acm_shared_rx_buffer.head
+#define Rx_TAIL curie_shared_data->cdc_acm_shared_rx_buffer.tail
+#define Tx_BUFF curie_shared_data->cdc_acm_shared_tx_buffer.data
+#define Tx_HEAD curie_shared_data->cdc_acm_shared_tx_buffer.head
+#define Tx_TAIL curie_shared_data->cdc_acm_shared_tx_buffer.tail
 #define SBS     SERIAL_BUFFER_SIZE
 
 /* Make sure BUFFER_LENGTH is not bigger then shared ring buffers */
@@ -83,9 +76,6 @@ bool usbSetupDone = false;
 #define USB_CONNECTED	    0x04
 #define USB_DISCONNECTED    0x05
 
-static struct cdc_ring_buffer* cdc_acm_shared_rx_buffer;
-static struct cdc_ring_buffer* cdc_acm_shared_tx_buffer;
-//volatile struct cdc_acm_shared_data cdc_acm_buffers;
 
 static uint8_t read_buffer[BUFFER_LENGTH*2];
 static uint8_t write_buffer[BUFFER_LENGTH*2];
@@ -151,10 +141,10 @@ void start_arc(unsigned int reset_vector)
 {
 
 	if (reset_vector != 0) {
-		shared_data->arc_start = reset_vector;
+		curie_shared_data->arc_start = reset_vector;
 	}
 
-	shared_data->flags = 0;
+	curie_shared_data->flags = 0;
 	for(int i = 0; i < 6400000; i++)
 	{
 	}
@@ -176,8 +166,9 @@ void reboot(void)
 
 void main(void)
 {
-	shared_data->cdc_acm_buffers.rx_buffer = &shared_data->cdc_acm_shared_rx_buffer;
-	shared_data->cdc_acm_buffers.tx_buffer = &shared_data->cdc_acm_shared_tx_buffer;
+	curie_shared_data->cdc_acm_buffers_ptr = &curie_shared_data->cdc_acm_buffers;
+	curie_shared_data->cdc_acm_buffers.rx_buffer = &curie_shared_data->cdc_acm_shared_rx_buffer;
+	curie_shared_data->cdc_acm_buffers.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
 
 	//start ARC core
 	uint32_t *reset_vector;
@@ -205,7 +196,7 @@ void main(void)
 		PRINT("Failed to set DCD, ret code %d\n", ret);
 	
 	acm_tx_state = ACM_TX_READY;
-	shared_data->cdc_acm_buffers.host_open = true;
+	curie_shared_data->cdc_acm_buffers.host_open = true;
 	
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
 	if (ret)
@@ -224,10 +215,10 @@ void main(void)
 	usbSetupDone = true;
 	
 	//reset head and tails values to 0
-	shared_data->cdc_acm_shared_rx_buffer.head = 0;
-	shared_data->cdc_acm_shared_rx_buffer.tail = 0;
-	shared_data->cdc_acm_shared_tx_buffer.head = 0;
-	shared_data->cdc_acm_shared_tx_buffer.tail = 0;
+	curie_shared_data->cdc_acm_shared_rx_buffer.head = 0;
+	curie_shared_data->cdc_acm_shared_rx_buffer.tail = 0;
+	curie_shared_data->cdc_acm_shared_tx_buffer.head = 0;
+	curie_shared_data->cdc_acm_shared_tx_buffer.tail = 0;
 }
 
 extern "C" void baudrateReset(void)
@@ -250,15 +241,8 @@ extern "C" void baudrateReset(void)
 
 extern "C" void usbSerialTask(void)
 {
-	int32_t bytes_read = 0;
-
 	while(!usbSetupDone);
-	//write_data(dev, banner1, strlen(banner1));
-	//write_data(dev, banner2, strlen(banner2));
 
-	
-	/* Echo the received data */
-	PRINT("characters read: \n");
 	uint32_t baudrate, ret = 0;
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
 	static const char *baud = "baudrate 1200. Reset board\r\n";
@@ -266,22 +250,13 @@ extern "C" void usbSerialTask(void)
 	
 	while (1) {
 		cdc_acm_tx();
-		task_sleep(10);
-		ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
-		if(baudrate == 1200)
-		{
-			write_data(dev, baud, strlen(baud));
-			reboot();
-		}
+		task_sleep(5);
 	}
 	
 }
 
 void cdc_acm_tx()
 {
-	//int head = shared_data->cdc_acm_shared_tx_buffer.head;
-	//int tail = shared_data->cdc_acm_shared_tx_buffer.tail;
-
 	if (acm_tx_state == ACM_TX_READY) 
 	{
 		if(Tx_HEAD != Tx_TAIL)
