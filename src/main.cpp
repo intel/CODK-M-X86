@@ -14,16 +14,12 @@
  * limitations under the License.
  */
 
-/**
- * @file C++ Synchronization demo.  Uses basic C++ functionality.
- */
 
 #include <stdio.h>
 #include <string.h>
 #include <device.h>
 #include <uart.h>
 #include <zephyr.h>
-//#include <reboot.h>
 
 #if defined(CONFIG_STDOUT_CONSOLE)
 #include <stdio.h>
@@ -46,11 +42,10 @@
 #define RSTC_WARM_RESET	(1 << 1)
 #define RSTC_COLD_RESET (1 << 3)
 
-#define CDC_ACM_DEVICE "CDC_ACM"
 
 static volatile bool data_transmitted;
-static volatile bool data_arrived;
-static unsigned char data_buf[64];
+static volatile bool data_arrived = false;
+
 
 struct device *dev;
 bool usbSetupDone = false;
@@ -77,7 +72,8 @@ bool usbSetupDone = false;
 #define USB_DISCONNECTED    0x05
 
 
-static uint8_t read_buffer[BUFFER_LENGTH*2];
+// buffers
+static unsigned char data_buf[128];
 static uint8_t write_buffer[BUFFER_LENGTH*2];
 
 typedef enum {
@@ -96,6 +92,7 @@ static volatile uint32_t acm_rx_state = ACM_RX_DISABLED;
 static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
 
 void cdc_acm_tx();
+void cdc_acm_rx();
 
 
 static void interrupt_handler(struct device *dev)
@@ -113,16 +110,19 @@ static void interrupt_handler(struct device *dev)
 
 static void read_data(struct device *dev, int *bytes_read)
 {
-	uart_irq_rx_enable(dev);
+	int timeout = 1000;
+
+	while (data_arrived == false)
+	{
+		if(!timeout)
+			break;
+		timeout--;
+	}
 
 	data_arrived = false;
-	while (data_arrived == false)
-		;
 
 	/* Read all data */
 	*bytes_read = uart_fifo_read(dev, data_buf, sizeof(data_buf));
-
-	uart_irq_rx_disable(dev);
 }
 
 static void write_data(struct device *dev, const char *buf, int len)
@@ -179,7 +179,7 @@ void main(void)
 	int ret;
 
 
-	dev = device_get_binding(CDC_ACM_DEVICE);
+	dev = device_get_binding(CONFIG_CDC_ACM_PORT_NAME);
 
 	PRINT("Wait for DTR\n");
 	while (1) {
@@ -196,6 +196,7 @@ void main(void)
 		PRINT("Failed to set DCD, ret code %d\n", ret);
 	
 	acm_tx_state = ACM_TX_READY;
+	acm_rx_state = ACM_RX_READY;
 	curie_shared_data->cdc_acm_buffers.host_open = true;
 	
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
@@ -243,14 +244,13 @@ extern "C" void usbSerialTask(void)
 {
 	while(!usbSetupDone);
 
-	uint32_t baudrate, ret = 0;
-	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
-	static const char *baud = "baudrate 1200. Reset board\r\n";
+	/* Enable rx interrupts */
+	uart_irq_rx_enable(dev);
 
-	
 	while (1) {
 		cdc_acm_tx();
-		task_sleep(5);
+		cdc_acm_rx();
+		task_sleep(1);
 	}
 	
 }
@@ -281,4 +281,38 @@ void cdc_acm_tx()
 	}
 }
 
- 
+void cdc_acm_rx()
+{
+	int bytes_read , new_head, i;
+	if (acm_rx_state == ACM_RX_READY)
+	{
+		read_data(dev, &bytes_read);
+	}
+
+	i=0;
+	while(bytes_read)
+	{
+		if (!curie_shared_data->cdc_acm_buffers.device_open) 
+		{
+			// ARC is not ready to receive this data - discard it
+			write_data(dev, "arc not ready\r\n", 15);
+			bytes_read = 0;
+			break;
+		}
+		// Check room in Rx buffer
+		new_head = (Rx_HEAD + 1) % SBS;
+		if (new_head != Rx_TAIL) 
+		{
+			Rx_BUFF[Rx_HEAD] = data_buf[i];
+			Rx_HEAD = new_head;
+			i++;
+			bytes_read--;
+		} else 
+		{
+
+			break;
+		}
+	}
+	
+}
+

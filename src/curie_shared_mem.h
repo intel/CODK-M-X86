@@ -98,7 +98,6 @@ struct platform_shared_block_ {
 
 #define ARC_READY	(1 << 0)
 
-#define RAM_START           0xA8000000
-#define curie_shared_data ((struct platform_shared_block_ *) RAM_START)
+#define curie_shared_data ((struct platform_shared_block_ *) SHARED_ADDR_START)
 
 #endif
