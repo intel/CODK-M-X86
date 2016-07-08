@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015-2016 Wind River Systems, Inc.
+ * Copyright (c) 2016 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -20,6 +20,7 @@
 #include <device.h>
 #include <uart.h>
 #include <zephyr.h>
+#include <gpio.h>
 
 #if defined(CONFIG_STDOUT_CONSOLE)
 #include <stdio.h>
@@ -42,6 +43,7 @@
 #define RSTC_WARM_RESET	(1 << 1)
 #define RSTC_COLD_RESET (1 << 3)
 
+#define SOFTRESET_INTERRUPT_PIN		0
 
 static volatile bool data_transmitted;
 static volatile bool data_arrived = false;
@@ -49,6 +51,10 @@ static volatile bool data_arrived = false;
 
 struct device *dev;
 bool usbSetupDone = false;
+
+struct gpio_callback cb;
+
+
 
 /**
  * Use the following defines just to make the tips of your finger happier.
@@ -93,7 +99,14 @@ static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
 
 void cdc_acm_tx();
 void cdc_acm_rx();
+void softResetButton();
+void reboot();
 
+static void softReset_button_callback(struct device *port, struct gpio_callback *cb, uint32_t pins)
+{
+	PRINT("SOFT RESET\r\n");
+	reboot();
+}
 
 static void interrupt_handler(struct device *dev)
 {
@@ -166,11 +179,14 @@ void reboot(void)
 
 void main(void)
 {
+	// setup shared memory pointers for cdc-acm buffers
 	curie_shared_data->cdc_acm_buffers_ptr = &curie_shared_data->cdc_acm_buffers;
 	curie_shared_data->cdc_acm_buffers.rx_buffer = &curie_shared_data->cdc_acm_shared_rx_buffer;
 	curie_shared_data->cdc_acm_buffers.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
 
-	//start ARC core
+	softResetButton();
+
+	// start ARC core
 	uint32_t *reset_vector;
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
@@ -253,6 +269,27 @@ extern "C" void usbSerialTask(void)
 		task_sleep(1);
 	}
 	
+}
+
+void softResetButton()
+{
+	struct device *aon_gpio;
+
+	aon_gpio = device_get_binding("GPIO_AON_0");
+	if (!aon_gpio) 
+	{
+		PRINT("aon_gpio device not found.\n");
+		return;
+	}
+
+	gpio_init_callback(&cb, softReset_button_callback, BIT(SOFTRESET_INTERRUPT_PIN));
+	gpio_add_callback(aon_gpio, &cb);
+
+	gpio_pin_configure(aon_gpio, SOFTRESET_INTERRUPT_PIN,
+			   GPIO_DIR_IN | GPIO_INT | GPIO_INT_EDGE |
+			   GPIO_INT_ACTIVE_LOW | GPIO_INT_DEBOUNCE);
+
+	gpio_pin_enable_callback(aon_gpio, SOFTRESET_INTERRUPT_PIN);
 }
 
 void cdc_acm_tx()
