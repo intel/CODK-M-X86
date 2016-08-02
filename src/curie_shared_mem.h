@@ -21,6 +21,7 @@
 #define SHARED_ADDR_START 0xA8000000
 
 #define SERIAL_BUFFER_SIZE 256
+#define SHARED_BUFFER_SIZE 512
 
 struct cdc_ring_buffer
 {
@@ -43,6 +44,28 @@ struct cdc_acm_shared_data {
     volatile int device_open;
 };
 
+struct shared_ring_buffer
+{
+    /** Ring buffer data */
+    volatile uint8_t data[SHARED_BUFFER_SIZE];
+    /** Ring buffer head index, modified by producer */
+    volatile int head;
+    /** Ring buffer tail index, modified by consumer */
+    volatile int tail;
+
+    /** Buffer status
+     * 0 - locked by X86 core
+     * 1 - locked by arc core
+     * 2 - available to be taken by any core
+    **/
+    volatile int flag;
+};
+
+struct smc_shared_data
+{
+    struct shared_ring_buffer *quark_buffer;
+    struct shared_ring_buffer *arc_buffer;
+};
 
 struct platform_shared_block_ {
     /** Arc reset vector */
@@ -87,12 +110,19 @@ struct platform_shared_block_ {
      * pointers of this structure.
      * The ARC core counts on QRK to find valid pointers in place.
      */
-    struct cdc_acm_shared_data	*cdc_acm_buffers_ptr;
+    struct cdc_acm_shared_data	*cdc_acm_buffers;
 
-    struct cdc_acm_shared_data cdc_acm_buffers;
+    struct cdc_acm_shared_data cdc_acm_buffers_obj;
 
     struct cdc_ring_buffer cdc_acm_shared_rx_buffer;
     struct cdc_ring_buffer cdc_acm_shared_tx_buffer;
+
+    struct smc_shared_data *smc_shared_data_ptr;
+
+    struct smc_shared_data smc_shared_data_obj;
+
+    struct shared_ring_buffer quark_to_ARC;
+    struct shared_ring_buffer ARC_to_quark;
 };
 
 
