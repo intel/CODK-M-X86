@@ -22,6 +22,8 @@
 #include <zephyr.h>
 #include <gpio.h>
 
+#include "sharedmemory_com.h"
+
 #if defined(CONFIG_STDOUT_CONSOLE)
 #include <stdio.h>
 #define PRINT           printf
@@ -180,13 +182,13 @@ void reboot(void)
 void main(void)
 {
 	// setup shared memory pointers for cdc-acm buffers
-	curie_shared_data->cdc_acm_buffers_ptr = &curie_shared_data->cdc_acm_buffers;
-	curie_shared_data->cdc_acm_buffers.rx_buffer = &curie_shared_data->cdc_acm_shared_rx_buffer;
-	curie_shared_data->cdc_acm_buffers.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
+	curie_shared_data->cdc_acm_buffers = &curie_shared_data->cdc_acm_buffers_obj;
+	curie_shared_data->cdc_acm_buffers_obj.rx_buffer = &curie_shared_data->cdc_acm_shared_rx_buffer;
+	curie_shared_data->cdc_acm_buffers_obj.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
 
 	softResetButton();
-
-	// start ARC core
+	init_sharedMemory_com();
+	//start ARC core
 	uint32_t *reset_vector;
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
@@ -213,7 +215,7 @@ void main(void)
 	
 	acm_tx_state = ACM_TX_READY;
 	acm_rx_state = ACM_RX_READY;
-	curie_shared_data->cdc_acm_buffers.host_open = true;
+	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 	
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
 	if (ret)
@@ -266,7 +268,6 @@ extern "C" void usbSerialTask(void)
 	while (1) {
 		cdc_acm_tx();
 		cdc_acm_rx();
-		task_sleep(1);
 	}
 	
 }
@@ -329,7 +330,7 @@ void cdc_acm_rx()
 	i=0;
 	while(bytes_read)
 	{
-		if (!curie_shared_data->cdc_acm_buffers.device_open) 
+		if (!curie_shared_data->cdc_acm_buffers_obj.device_open) 
 		{
 			// ARC is not ready to receive this data - discard it
 			write_data(dev, "arc not ready\r\n", 15);
