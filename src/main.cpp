@@ -268,6 +268,7 @@ extern "C" void usbSerialTask(void)
 	while (1) {
 		cdc_acm_tx();
 		cdc_acm_rx();
+        task_yield();
 	}
 	
 }
