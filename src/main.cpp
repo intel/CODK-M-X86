@@ -192,7 +192,14 @@ void main(void)
 	uint32_t *reset_vector;
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
+	task_start(CDCACM_SETUP);
+	task_start(BAUDRATE_RESET);
+	task_start(USB_SERIAL);
+}
 
+extern "C" void cdcacm_setup(void)
+{
+	PRINT("cdcacm_setup task\r\n");
 	uint32_t baudrate, dtr = 0;
 	int ret;
 
@@ -204,6 +211,7 @@ void main(void)
 		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
 		if (dtr)
 			break;
+		task_yield();
 	}
 	
 	PRINT("DTR set, start test\n");
@@ -231,20 +239,24 @@ void main(void)
 		PRINT("Baudrate detected: %d\n", baudrate);
 
 	uart_irq_callback_set(dev, interrupt_handler);
-	usbSetupDone = true;
-	
+		
 	//reset head and tails values to 0
 	curie_shared_data->cdc_acm_shared_rx_buffer.head = 0;
 	curie_shared_data->cdc_acm_shared_rx_buffer.tail = 0;
 	curie_shared_data->cdc_acm_shared_tx_buffer.head = 0;
 	curie_shared_data->cdc_acm_shared_tx_buffer.tail = 0;
+	usbSetupDone = true;
 }
 
-extern "C" void baudrateReset(void)
+extern "C" void baudrate_reset(void)
 {
-	PRINT("baudrateReset task\r\n");
+	PRINT("baudrate_reset task\r\n");
 	uint32_t baudrate, ret = 0;
-	while(!usbSetupDone);
+	while(!usbSetupDone)
+	{
+		task_yield();
+	}
+
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);	
 	
 	while(1)
@@ -258,9 +270,13 @@ extern "C" void baudrateReset(void)
 	}
 }
 
-extern "C" void usbSerialTask(void)
+extern "C" void usb_serial(void)
 {
-	while(!usbSetupDone);
+	PRINT("usb_serial task\r\n");
+	while(!usbSetupDone)
+	{
+		task_yield();
+	}
 
 	/* Enable rx interrupts */
 	uart_irq_rx_enable(dev);
@@ -354,4 +370,5 @@ void cdc_acm_rx()
 	}
 	
 }
+
 

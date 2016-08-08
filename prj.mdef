@@ -2,9 +2,8 @@
 
 % TASK NAME  PRIO ENTRY STACK GROUPS
 % ==================================
-%  TASK TASKA    7 task_a  2048 [EXE]
-%  TASK TASKB    7 task_b  2048 [EXE]	
-  TASK TASKA    7 main  2048 [EXE]
-  TASK TASKB    8 usbSerialTask  2048 [EXE]
-  TASK TASKC    8 baudrateReset  256 [EXE]
+  TASK MAIN    7 main  2048 [EXE]
+  TASK CDCACM_SETUP    8 cdcacm_setup  1024 []
+  TASK BAUDRATE_RESET    8 baudrate_reset  512 []
+  TASK USB_SERIAL    8 usb_serial  2048 []
 

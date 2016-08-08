@@ -21,7 +21,7 @@
 #define SHARED_ADDR_START 0xA8000000
 
 #define SERIAL_BUFFER_SIZE 256
-#define SHARED_BUFFER_SIZE 512
+#define SHARED_BUFFER_SIZE 64
 
 struct cdc_ring_buffer
 {

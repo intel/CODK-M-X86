@@ -56,15 +56,14 @@ int smc_write(uint8_t data)
   {
     QUARK_BUFF[QUARK_BUFF_HEAD] = data;
     QUARK_BUFF_HEAD = new_head;
+    QUARK_BUFF_FLAG = 2; //unlock the buffer
+    return 0;
   }
   else
   {
+    QUARK_BUFF_FLAG = 2; //unlock the buffer
     return 2; //buffer is full
   }
-  //unlock the buffer
-  QUARK_BUFF_FLAG = 2;
-
-  return 0;
 }
 
 uint8_t smc_read()
