@@ -55,19 +55,6 @@ bool usbSetupDone = false;
 struct gpio_callback cb;
 
 
-
-/**
- * Use the following defines just to make the tips of your finger happier.
- */
-
-#define Rx_BUFF curie_shared_data->cdc_acm_shared_rx_buffer.data
-#define Rx_HEAD curie_shared_data->cdc_acm_shared_rx_buffer.head
-#define Rx_TAIL curie_shared_data->cdc_acm_shared_rx_buffer.tail
-#define Tx_BUFF curie_shared_data->cdc_acm_shared_tx_buffer.data
-#define Tx_HEAD curie_shared_data->cdc_acm_shared_tx_buffer.head
-#define Tx_TAIL curie_shared_data->cdc_acm_shared_tx_buffer.tail
-#define SBS     SERIAL_BUFFER_SIZE
-
 #define RESET_BAUD 1200
 #define BAUDRATE_RESET_SLEEP 100
 
@@ -159,15 +146,11 @@ void start_arc(unsigned int reset_vector)
 	}
 
 	curie_shared_data->flags = 0;
-	for(int i = 0; i < 6400000; i++)
-	{
-	}
+	sys_thread_busy_wait(500000);
 
 	*SCSS_SS_CFG_REG |= ARC_RUN_REQ_A;
 
-	for(int i = 0; i < 6400000; i++)
-	{
-	}
+	sys_thread_busy_wait(500000);
 	
 	PRINT("ARC core started\n");
 }
@@ -184,6 +167,8 @@ void main(void)
 	curie_shared_data->cdc_acm_buffers = &curie_shared_data->cdc_acm_buffers_obj;
 	curie_shared_data->cdc_acm_buffers_obj.rx_buffer = &curie_shared_data->cdc_acm_shared_rx_buffer;
 	curie_shared_data->cdc_acm_buffers_obj.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
+
+	curie_shared_data->cdc_acm_buffers_obj.host_open = false;
 
 	softResetButton();
 	init_sharedMemory_com();
@@ -210,6 +195,7 @@ extern "C" void cdcacm_setup(void)
 		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
 		if (dtr)
 			break;
+		task_sleep(50);
 		task_yield();
 	}
 	
@@ -266,6 +252,7 @@ extern "C" void baudrate_reset(void)
 			reboot();
 		}
 		task_sleep(BAUDRATE_RESET_SLEEP);
+		task_yield();
 	}
 }
 
@@ -369,5 +356,4 @@ void cdc_acm_rx()
 	}
 	
 }
-
 

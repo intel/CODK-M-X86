@@ -23,6 +23,18 @@
 #define SERIAL_BUFFER_SIZE 256
 #define SHARED_BUFFER_SIZE 64
 
+/**
+ * Use the following defines just to make the tips of your finger happier.
+ */
+
+#define Rx_BUFF curie_shared_data->cdc_acm_shared_rx_buffer.data
+#define Rx_HEAD curie_shared_data->cdc_acm_shared_rx_buffer.head
+#define Rx_TAIL curie_shared_data->cdc_acm_shared_rx_buffer.tail
+#define Tx_BUFF curie_shared_data->cdc_acm_shared_tx_buffer.data
+#define Tx_HEAD curie_shared_data->cdc_acm_shared_tx_buffer.head
+#define Tx_TAIL curie_shared_data->cdc_acm_shared_tx_buffer.tail
+#define SBS     SERIAL_BUFFER_SIZE
+
 struct cdc_ring_buffer
 {
     /** Ring buffer data */
