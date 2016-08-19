@@ -66,9 +66,9 @@ struct gpio_callback cb;
 
 #define SOFTRESET_INTERRUPT_PIN		0
 
-#define ARCSTART_DELAY_CYCLES		6400000
-#define SERIAL_READ_TIMEOUT		1000
-
+#define ARCSTART_DELAY		500000	//500msec
+#define SERIAL_READ_TIMEOUT	1000
+#define CDCACM_TX_DELAY		4000
 
 // buffers
 static unsigned char data_buf[128];
@@ -96,7 +96,6 @@ void reboot();
 
 static void softReset_button_callback(struct device *port, struct gpio_callback *cb, uint32_t pins)
 {
-	PRINT("SOFT RESET\r\n");
 	reboot();
 }
 
@@ -133,8 +132,10 @@ static void write_data(struct device *dev, const char *buf, int len)
 	data_transmitted = false;
 	uart_fifo_fill(dev, (const uint8_t*)buf, len);
 	while (data_transmitted == false)
-		;
-
+	{
+		task_yield();
+	}
+	sys_thread_busy_wait(CDCACM_TX_DELAY); //allow enough time for the FIFO to be emptied
 	uart_irq_tx_disable(dev);
 }
 
@@ -146,13 +147,11 @@ void start_arc(unsigned int reset_vector)
 	}
 
 	curie_shared_data->flags = 0;
-	sys_thread_busy_wait(500000);
+	sys_thread_busy_wait(ARCSTART_DELAY);
 
 	*SCSS_SS_CFG_REG |= ARC_RUN_REQ_A;
 
-	sys_thread_busy_wait(500000);
-	
-	PRINT("ARC core started\n");
+	sys_thread_busy_wait(ARCSTART_DELAY);
 }
 
 void reboot(void)
@@ -183,14 +182,12 @@ void main(void)
 
 extern "C" void cdcacm_setup(void)
 {
-	PRINT("cdcacm_setup task\r\n");
 	uint32_t baudrate, dtr = 0;
 	int ret;
 
 
 	dev = device_get_binding(CONFIG_CDC_ACM_PORT_NAME);
 
-	PRINT("Wait for DTR\n");
 	while (1) {
 		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
 		if (dtr)
@@ -198,30 +195,20 @@ extern "C" void cdcacm_setup(void)
 		task_sleep(50);
 		task_yield();
 	}
-	
-	PRINT("DTR set, start test\n");
 
 	/* They are optional, we use them to test the interrupt endpoint */
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DCD, 1);
-	if (ret)
-		PRINT("Failed to set DCD, ret code %d\n", ret);
 	
 	acm_tx_state = ACM_TX_READY;
 	acm_rx_state = ACM_RX_READY;
 	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 	
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
-	if (ret)
-		PRINT("Failed to set DSR, ret code %d\n", ret);
 
 	/* Wait 1 sec for the host to do all settings */
 	sys_thread_busy_wait(1000000);
 
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
-	if (ret)
-		PRINT("Failed to get baudrate, ret code %d\n", ret);
-	else
-		PRINT("Baudrate detected: %d\n", baudrate);
 
 	uart_irq_callback_set(dev, interrupt_handler);
 		
@@ -235,7 +222,6 @@ extern "C" void cdcacm_setup(void)
 
 extern "C" void baudrate_reset(void)
 {
-	PRINT("baudrate_reset task\r\n");
 	uint32_t baudrate, ret = 0;
 	while(!usbSetupDone)
 	{
@@ -258,7 +244,6 @@ extern "C" void baudrate_reset(void)
 
 extern "C" void usb_serial(void)
 {
-	PRINT("usb_serial task\r\n");
 	while(!usbSetupDone)
 	{
 		task_yield();
@@ -282,7 +267,6 @@ void softResetButton()
 	aon_gpio = device_get_binding("GPIO_AON_0");
 	if (!aon_gpio) 
 	{
-		PRINT("aon_gpio device not found.\n");
 		return;
 	}
 
@@ -336,7 +320,6 @@ void cdc_acm_rx()
 		if (!curie_shared_data->cdc_acm_buffers_obj.device_open) 
 		{
 			// ARC is not ready to receive this data - discard it
-			write_data(dev, "arc not ready\r\n", 15);
 			bytes_read = 0;
 			break;
 		}
