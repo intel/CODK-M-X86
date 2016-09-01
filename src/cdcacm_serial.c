@@ -2,6 +2,7 @@
 #include <device.h>
 #include <zephyr.h>
 #include <uart.h>
+#include <gpio.h>
 #include "soc.h"
 
 #include "soc_ctrl.h"
@@ -24,6 +25,8 @@
 #define RSTC_WARM_RESET	(1 << 1)
 #define RSTC_COLD_RESET (1 << 3)
 
+#define TXRX_LED 12
+
 typedef enum {
 	ACM_RX_DISABLED,
 	ACM_RX_READY,
@@ -37,6 +40,7 @@ typedef enum {
 } acm_tx_states;
 
 struct device *dev;
+struct device *gpio_dev;
 bool usbSetupDone = false;
 bool enableReboot = false;
 
@@ -49,7 +53,6 @@ static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
 
 static volatile bool data_transmitted;
 static volatile bool data_arrived = false;
-
 
 
 static void interrupt_handler(struct device *dev)
@@ -99,6 +102,7 @@ void cdc_acm_tx()
 		if(Tx_HEAD != Tx_TAIL)
 		{
 			int cnt = 0, index = Tx_TAIL;
+			gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
 			for (; (index != Tx_HEAD) && (cnt < BUFFER_LENGTH);cnt++) 
 			{
 				write_buffer[cnt] = Tx_BUFF[index];
@@ -106,6 +110,7 @@ void cdc_acm_tx()
 			}
 			Tx_TAIL= (Tx_TAIL + cnt) % SBS;
 			write_data(dev, (const char*)write_buffer, cnt);
+			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 		}
 		else
 		{
@@ -160,6 +165,10 @@ void init_cdc_acm()
 	curie_shared_data->cdc_acm_buffers_obj.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
 
 	curie_shared_data->cdc_acm_buffers_obj.host_open = false;
+
+	gpio_dev= device_get_binding("GPIO_0");
+	gpio_pin_configure(gpio_dev, TXRX_LED, (GPIO_DIR_OUT));
+	gpio_pin_write(gpio_dev, TXRX_LED, 1);
 }
 
 void cdcacm_setup(void)
