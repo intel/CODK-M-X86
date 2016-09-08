@@ -191,7 +191,6 @@ void cdcacm_setup(void)
 	
 	acm_tx_state = ACM_TX_READY;
 	acm_rx_state = ACM_RX_READY;
-	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 	
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
 
@@ -204,6 +203,8 @@ void cdcacm_setup(void)
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
 
 	uart_irq_callback_set(dev, interrupt_handler);
+
+	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 		
 	//reset head and tails values to 0
 	curie_shared_data->cdc_acm_shared_rx_buffer.head = 0;
