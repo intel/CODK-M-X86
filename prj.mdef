@@ -1,9 +1,0 @@
-% Application       : C++ demo
-
-% TASK NAME  PRIO ENTRY STACK GROUPS
-% ==================================
-  TASK MAIN    7 main  2048 [EXE]
-  TASK CDCACM_SETUP    8 cdcacm_setup  1024 []
-  TASK BAUDRATE_RESET    8 baudrate_reset  512 []
-  TASK USB_SERIAL    8 usb_serial  2048 []
-

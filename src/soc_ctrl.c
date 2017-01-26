@@ -11,11 +11,11 @@ void start_arc(unsigned int reset_vector)
 	}
 
 	curie_shared_data->flags = 0;
-	sys_thread_busy_wait(ARCSTART_DELAY);
+	k_busy_wait(ARCSTART_DELAY);
 
 	*SCSS_SS_CFG_REG |= ARC_RUN_REQ_A;
 
-	sys_thread_busy_wait(ARCSTART_DELAY);
+	k_busy_wait(ARCSTART_DELAY);
 }
 
 void halt_arc()

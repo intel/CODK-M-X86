@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2016 Intel Corporation
+ * Copyright (c) 2017 Intel Corporation
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,10 +14,8 @@
  * limitations under the License.
  */
 
-
-#include <stdio.h>
-#include <device.h>
 #include <zephyr.h>
+#include <misc/printk.h>
 #include <gpio.h>
 #include "soc.h"
 
@@ -26,15 +24,20 @@
 #include "cdcacm_serial.h"
 #include "curie_shared_mem.h"
 
-#if defined(CONFIG_STDOUT_CONSOLE)
-#include <stdio.h>
-#define PRINT           printf
-#else
-#include <misc/printk.h>
-#define PRINT           printk
-#endif
-
 #define SOFTRESET_INTERRUPT_PIN		0
+
+/* size of stack area used by each thread */
+#define MAIN_STACKSIZE  1024
+#define STACKSIZE256    256
+#define STACKSIZE128    128
+
+/* scheduling priority used by each thread */
+#define PRIORITY 7
+#define TASK_PRIORITY 8
+
+char __noinit __stack cdcacm_setup_stack_area[STACKSIZE256];
+char __noinit __stack baudrate_reset_stack_area[STACKSIZE128];
+char __noinit __stack usb_serial_stack_area[STACKSIZE256];
 
 struct gpio_callback cb;
 
@@ -45,26 +48,30 @@ static void softReset_button_callback(struct device *port, struct gpio_callback 
 	soft_reboot();
 }
 
-void main(void)
+void threadMain(void *dummy1, void *dummy2, void *dummy3)
 {
+
 	init_cdc_acm();
 	softResetButton();
-	init_sharedMemory_com();
     
 	//start ARC core
 	uint32_t *reset_vector;
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
 
-	task_start(CDCACM_SETUP);
-	task_start(BAUDRATE_RESET);
-	task_start(USB_SERIAL);
+	k_thread_spawn(cdcacm_setup_stack_area, STACKSIZE256, cdcacm_setup, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+	k_thread_spawn(baudrate_reset_stack_area, STACKSIZE128, baudrate_reset, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+	k_thread_spawn(usb_serial_stack_area, STACKSIZE256, usb_serial, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+
 }
 
 void softResetButton()
 {
 	struct device *aon_gpio;
-	char* gpio_aon_0 = (char*)"GPIO_AON_0";
+	char* gpio_aon_0 = (char*)"GPIO_1";
 	aon_gpio = device_get_binding(gpio_aon_0);
 	if (!aon_gpio) 
 	{
@@ -81,4 +88,6 @@ void softResetButton()
 	gpio_pin_enable_callback(aon_gpio, SOFTRESET_INTERRUPT_PIN);
 }
 
+K_THREAD_DEFINE(threadMain_id, MAIN_STACKSIZE, threadMain, NULL, NULL, NULL,
+		PRIORITY, 0, K_NO_WAIT);
 
