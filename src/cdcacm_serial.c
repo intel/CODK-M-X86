@@ -89,9 +89,7 @@ static void write_data(struct device *dev, const char *buf, int len)
 	uart_fifo_fill(dev, (const uint8_t*)buf, len);
 	while (data_transmitted == false)
 	{
-		k_yield();
 	}
-	k_busy_wait(CDCACM_TX_DELAY); //allow enough time for the FIFO to be emptied
 	uart_irq_tx_disable(dev);
 }
 
@@ -101,14 +99,13 @@ void cdc_acm_tx()
 	{
 		if(Tx_HEAD != Tx_TAIL)
 		{
-			int cnt = 0, index = Tx_TAIL;
+			int cnt = 0;
 			gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
-			for (; (index != Tx_HEAD) && (cnt < BUFFER_LENGTH);cnt++) 
+			for (; (Tx_TAIL != Tx_HEAD) && (cnt < BUFFER_LENGTH*2);cnt++)
 			{
-				write_buffer[cnt] = Tx_BUFF[index];
-				index = (index + 1) % SBS;
+				write_buffer[cnt] = Tx_BUFF[Tx_TAIL];
+				Tx_TAIL = (Tx_TAIL + 1)% SBS;
 			}
-			Tx_TAIL= (Tx_TAIL + cnt) % SBS;
 			write_data(dev, (const char*)write_buffer, cnt);
 			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 		}
