@@ -16,7 +16,9 @@
 
 #include <zephyr.h>
 #include <misc/printk.h>
+#include <cdc_acm_config.h>
 #include <gpio.h>
+#include <string.h>
 #include "soc.h"
 
 #include "sharedmemory_com.h"
@@ -43,6 +45,22 @@ char __noinit __stack usb_serial_stack_area[USBSERIAL_STACKSIZE];
 struct gpio_callback cb;
 
 void softResetButton();
+
+const uint16_t vid = 0x8087;
+const uint16_t pid = 0x0AB6;
+const char *vendor = "Intel";
+const char *product = "Arduino 101";
+const char *serial = "1.6";
+
+void cdc_acm_descriptor_callback (cdc_acm_cfg_t *cfg)
+{
+	cfg->vendor_id = vid;
+	cfg->product_id = pid;
+
+	memcpy(cfg->vendor_string, vendor, sizeof(cfg->vendor_string));
+	memcpy(cfg->product_string, product, sizeof(cfg->product_string));
+	memcpy(cfg->serial_string, serial, sizeof(cfg->serial_string));
+}
 
 static void softReset_button_callback(struct device *port, struct gpio_callback *cb, uint32_t pins)
 {
