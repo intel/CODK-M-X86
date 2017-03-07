@@ -8,8 +8,9 @@
 #include "soc_ctrl.h"
 #include "curie_shared_mem.h"
 
-#define RESET_BAUD 1200
-#define BAUDRATE_RESET_SLEEP 50
+#define RESET_BAUD              1200
+#define BAUDRATE_RESET_SLEEP    50
+#define TX_DELAY                40
 
 /* Make sure BUFFER_LENGTH is not bigger then shared ring buffers */
 #define BUFFER_LENGTH		128
@@ -95,19 +96,25 @@ static void write_data(struct device *dev, const char *buf, int len)
 
 void cdc_acm_tx()
 {
+	uint32_t dtr = 0;
 	if (acm_tx_state == ACM_TX_READY) 
 	{
 		if(Tx_HEAD != Tx_TAIL)
 		{
-			int cnt = 0;
-			gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
+			int cnt = 0;			
 			for (; (Tx_TAIL != Tx_HEAD) && (cnt < BUFFER_LENGTH*2);cnt++)
 			{
 				write_buffer[cnt] = Tx_BUFF[Tx_TAIL];
 				Tx_TAIL = (Tx_TAIL + 1)% SBS;
 			}
-			write_data(dev, (const char*)write_buffer, cnt);
-			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
+			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+			if(dtr)
+			{
+				gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
+				write_data(dev, (const char*)write_buffer, cnt);
+				k_busy_wait(TX_DELAY * cnt);
+				gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
+			}			
 		}
 		else
 		{
