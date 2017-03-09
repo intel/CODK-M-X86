@@ -22,6 +22,7 @@
 #include "sharedmemory_com.h"
 #include "soc_ctrl.h"
 #include "cdcacm_serial.h"
+#include "fault_led.h"
 #include "curie_shared_mem.h"
 #include <string.h>
 #include <cdc_acm_config.h>
@@ -34,6 +35,7 @@
 #define CDCACM_STACKSIZE    384
 #define RESET_STACKSIZE     384
 #define USBSERIAL_STACKSIZE 384
+#define FAULTLED_STACKSIZE  256
 
 /* scheduling priority used by each thread */
 #define PRIORITY 7
@@ -47,6 +49,7 @@
 char __noinit __stack cdcacm_setup_stack_area[CDCACM_STACKSIZE];
 char __noinit __stack baudrate_reset_stack_area[RESET_STACKSIZE];
 char __noinit __stack usb_serial_stack_area[USBSERIAL_STACKSIZE];
+char __noinit __stack fault_led_stack_area[FAULTLED_STACKSIZE];
 
 const char *vendor = "Intel";
 const char *product =  "Arduino 101";
@@ -108,6 +111,8 @@ void threadMain(void *dummy1, void *dummy2, void *dummy3)
 
 	init_cdc_acm();
 	softResetButton();
+
+	curie_shared_data->error_code = 0;
     
 	//start ARC core
 	uint32_t *reset_vector;
@@ -121,6 +126,9 @@ void threadMain(void *dummy1, void *dummy2, void *dummy3)
 			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
 	
 	k_thread_spawn(usb_serial_stack_area, USBSERIAL_STACKSIZE, usb_serial, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+
+	k_thread_spawn(fault_led_stack_area, FAULTLED_STACKSIZE, check_arc_error, NULL, NULL,
 			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
 
 }

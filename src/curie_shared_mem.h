@@ -145,6 +145,8 @@ struct platform_shared_block_ {
     void* quark_restore_addr;
     
     uint32_t pm_int_status;
+
+    uint8_t error_code;
 };
 
 
