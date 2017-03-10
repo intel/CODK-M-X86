@@ -138,10 +138,12 @@ void cdc_acm_rx()
 	i=0;
 	while(bytes_read)
 	{
+		gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
 		if (!curie_shared_data->cdc_acm_buffers_obj.device_open) 
 		{
 			// ARC is not ready to receive this data - discard it
 			bytes_read = 0;
+			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			break;
 		}
 		// Check room in Rx buffer
@@ -152,9 +154,10 @@ void cdc_acm_rx()
 			Rx_HEAD = new_head;
 			i++;
 			bytes_read--;
-		} else 
+		} 
+		else 
 		{
-
+			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			break;
 		}
 	}
