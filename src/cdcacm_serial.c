@@ -172,10 +172,6 @@ void init_cdc_acm()
 	curie_shared_data->cdc_acm_buffers_obj.tx_buffer = &curie_shared_data->cdc_acm_shared_tx_buffer;
 
 	curie_shared_data->cdc_acm_buffers_obj.host_open = false;
-
-	gpio_dev= device_get_binding("GPIO_0");
-	gpio_pin_configure(gpio_dev, TXRX_LED, (GPIO_DIR_OUT));
-	gpio_pin_write(gpio_dev, TXRX_LED, 1);
 }
 
 void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
@@ -204,6 +200,10 @@ void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
 	enableReboot = true;
 	k_yield();
 
+	gpio_dev= device_get_binding("GPIO_0");
+	gpio_pin_configure(gpio_dev, TXRX_LED, (GPIO_DIR_OUT));
+	gpio_pin_write(gpio_dev, TXRX_LED, 1);
+    
 	/* Wait 1 sec for the host to do all settings */
 	k_busy_wait(1000000);
 
