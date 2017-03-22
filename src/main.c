@@ -27,6 +27,7 @@
 #include <string.h>
 #include <cdc_acm_config.h>
 #include <factory_data.h>
+#include <linker-defs.h>
 
 #define SOFTRESET_INTERRUPT_PIN		0
 
@@ -54,6 +55,8 @@ char __noinit __stack fault_led_stack_area[FAULTLED_STACKSIZE];
 const char *vendor = "Intel";
 const char *product =  "Arduino 101";
 const char *serial = "00.01";
+
+DEFINE_CODK_FIRMWARE_VERSION("firmware_1.6.0_arduino101");
 
 struct gpio_callback cb;
 
