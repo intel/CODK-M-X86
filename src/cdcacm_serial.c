@@ -47,7 +47,6 @@ bool enableReboot = false;
 
 // buffers
 static unsigned char data_buf[128];
-static uint8_t write_buffer[BUFFER_LENGTH*2];
 
 static volatile uint32_t acm_rx_state = ACM_RX_DISABLED;
 static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
@@ -97,12 +96,13 @@ static void write_data(struct device *dev, const char *buf, int len)
 void cdc_acm_tx()
 {
 	uint32_t dtr = 0;
+	uint8_t write_buffer[BUFFER_LENGTH];
 	if (acm_tx_state == ACM_TX_READY) 
 	{
 		if(Tx_HEAD != Tx_TAIL)
 		{
 			int cnt = 0;			
-			for (; (Tx_TAIL != Tx_HEAD) && (cnt < BUFFER_LENGTH*2);cnt++)
+			for (; (Tx_TAIL != Tx_HEAD) && (cnt < BUFFER_LENGTH);cnt++)
 			{
 				write_buffer[cnt] = Tx_BUFF[Tx_TAIL];
 				Tx_TAIL = (Tx_TAIL + 1)% SBS;
