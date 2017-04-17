@@ -10,7 +10,6 @@
 
 #define RESET_BAUD              1200
 #define BAUDRATE_RESET_SLEEP    50
-#define TX_DELAY                40
 
 /* Make sure BUFFER_LENGTH is not bigger then shared ring buffers */
 #define BUFFER_LENGTH		128
@@ -19,7 +18,7 @@
 #define USB_DISCONNECTED    0x05
 
 #define SERIAL_READ_TIMEOUT	1000
-#define CDCACM_TX_DELAY		4000
+#define CDCACM_TX_DELAY		2000
 
 #define SCSS_RSTC   (uint32_t*)0xb0800570
 
@@ -54,7 +53,6 @@ static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
 static volatile bool data_transmitted;
 static volatile bool data_arrived = false;
 
-
 static void interrupt_handler(struct device *dev)
 {
 	uart_irq_update(dev);
@@ -83,14 +81,13 @@ static void read_data(struct device *dev, int *bytes_read)
 
 static void write_data(struct device *dev, const char *buf, int len)
 {
-	uart_irq_tx_enable(dev);
-
 	data_transmitted = false;
-	uart_fifo_fill(dev, (const uint8_t*)buf, len);
-	while (data_transmitted == false)
+	for(int i = 0; i < len; i++)
 	{
+		uart_poll_out(dev, buf[i]);
 	}
-	uart_irq_tx_disable(dev);
+	data_transmitted = true;
+	k_busy_wait(CDCACM_TX_DELAY);
 }
 
 void cdc_acm_tx()
@@ -112,7 +109,6 @@ void cdc_acm_tx()
 			{
 				gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
 				write_data(dev, (const char*)write_buffer, cnt);
-				k_busy_wait(TX_DELAY * cnt);
 				gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			}			
 		}
@@ -174,7 +170,7 @@ void init_cdc_acm()
 	curie_shared_data->cdc_acm_buffers_obj.host_open = false;
 }
 
-void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
+void cdcacm_setup()
 {
 	uint32_t baudrate, dtr = 0;
 	int ret;
@@ -198,7 +194,6 @@ void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
 	ret = uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
 
 	enableReboot = true;
-	k_yield();
 
 	gpio_dev= device_get_binding("GPIO_0");
 	gpio_pin_configure(gpio_dev, TXRX_LED, (GPIO_DIR_OUT));
@@ -210,51 +205,50 @@ void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
 
 	uart_irq_callback_set(dev, interrupt_handler);
-
-	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
-		
+	
 	//reset head and tails values to 0
-	curie_shared_data->cdc_acm_shared_rx_buffer.head = 0;
-	curie_shared_data->cdc_acm_shared_rx_buffer.tail = 0;
-	curie_shared_data->cdc_acm_shared_tx_buffer.head = 0;
-	curie_shared_data->cdc_acm_shared_tx_buffer.tail = 0;
-	usbSetupDone = true;
-}
+	Tx_TAIL = 0;
+	Tx_HEAD = 0;
+	Rx_TAIL = 0;
+	Rx_HEAD = 0;
 
-void baudrate_reset(void *dummy1, void *dummy2, void *dummy3)
-{
-	uint32_t baudrate, ret = 0;
-	while(!enableReboot)
-	{
-		k_yield();
-	}
-	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);	
-	while(1)
-	{
-		ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
-		if(baudrate == RESET_BAUD)
-		{
-			soft_reboot();
-		}
-		k_sleep(BAUDRATE_RESET_SLEEP);
-	}
-}
-
-void usb_serial(void *dummy1, void *dummy2, void *dummy3)
-{
-	while(!usbSetupDone)
-	{
-		k_yield();
-	}
-
-	/* Enable rx interrupts */
 	uart_irq_rx_enable(dev);
 
-	while (1) {
+	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
+}
+
+void baudrate_reset()
+{
+	uint32_t baudrate, ret = 0;
+
+	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
+	if(baudrate == RESET_BAUD)
+	{
+		soft_reboot();
+	}
+}
+
+void usb_serial()
+{
+	uint32_t dtr = 0;
+	uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+	if(dtr)
+	{
+		if(curie_shared_data->cdc_acm_buffers_obj.host_open == false)
+		{
+			curie_shared_data->cdc_acm_buffers_obj.host_open = true;
+		}
 		cdc_acm_tx();
 		cdc_acm_rx();
-		k_yield();
 	}
-	
+	else
+	{
+		curie_shared_data->cdc_acm_buffers_obj.host_open = false;
+		//reset head and tails values to 0
+		Tx_TAIL = 0;
+		Tx_HEAD = 0;
+		Rx_TAIL = 0;
+		Rx_HEAD = 0;
+	}
 }
 
