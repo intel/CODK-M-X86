@@ -19,7 +19,7 @@
 #define USB_DISCONNECTED    0x05
 
 #define SERIAL_READ_TIMEOUT	1000
-#define CDCACM_TX_DELAY		4000
+#define CDCACM_TX_DELAY		5000
 
 #define SCSS_RSTC   (uint32_t*)0xb0800570
 
@@ -84,12 +84,22 @@ static void read_data(struct device *dev, int *bytes_read)
 static void write_data(struct device *dev, const char *buf, int len)
 {
 	uart_irq_tx_enable(dev);
-
-	data_transmitted = false;
-	uart_fifo_fill(dev, (const uint8_t*)buf, len);
-	while (data_transmitted == false)
+	
+	for(int i = 0; i < len; i+=4)
 	{
+		data_transmitted = false;
+		if((i+4) <= len)
+		{
+			uart_fifo_fill(dev, buf+i, 4);
+		}
+		else
+		{
+			uart_fifo_fill(dev, buf+i, len-i);
+		}
+		while (data_transmitted == false)
+			;
 	}
+
 	uart_irq_tx_disable(dev);
 }
 
@@ -97,22 +107,25 @@ void cdc_acm_tx()
 {
 	uint32_t dtr = 0;
 	uint8_t write_buffer[BUFFER_LENGTH];
+	volatile int head = Tx_HEAD;
+	volatile int tail = Tx_TAIL;
 	if (acm_tx_state == ACM_TX_READY) 
 	{
-		if(Tx_HEAD != Tx_TAIL)
+		if(head!= tail)
 		{
-			int cnt = 0;			
-			for (; (Tx_TAIL != Tx_HEAD) && (cnt < BUFFER_LENGTH);cnt++)
+			uint8_t cnt = 0, index = Tx_TAIL;
+			k_busy_wait(CDCACM_TX_DELAY);		
+			for (; (index != head) && (cnt < BUFFER_LENGTH);cnt++)
 			{
-				write_buffer[cnt] = Tx_BUFF[Tx_TAIL];
-				Tx_TAIL = (Tx_TAIL + 1)% SBS;
+				write_buffer[cnt] = (uint8_t)*(Tx_BUFF+index);
+				index = (index + 1)% SBS;
 			}
+			Tx_TAIL = (tail + cnt) % SBS;
 			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
 			if(dtr)
 			{
 				gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
 				write_data(dev, (const char*)write_buffer, cnt);
-				k_busy_wait(TX_DELAY * cnt);
 				gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			}			
 		}
