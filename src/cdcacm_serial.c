@@ -54,6 +54,12 @@ static volatile uint32_t acm_tx_state = ACM_TX_DISABLED;
 static volatile bool data_transmitted;
 static volatile bool data_arrived = false;
 
+#define USB_GRSTCTL 0xB0500010
+
+void flush_usb_txfifo()
+{
+	*(uint32_t*)USB_GRSTCTL = *(uint32_t*)USB_GRSTCTL | 0x00000020;
+}
 
 static void interrupt_handler(struct device *dev)
 {
@@ -82,7 +88,8 @@ static void read_data(struct device *dev, int *bytes_read)
 }
 
 static void write_data(struct device *dev, const char *buf, int len)
-{
+{	
+	uint32_t dtr = 0;
 	uart_irq_tx_enable(dev);
 	
 	for(int i = 0; i < len; i+=4)
@@ -97,9 +104,13 @@ static void write_data(struct device *dev, const char *buf, int len)
 			uart_fifo_fill(dev, buf+i, len-i);
 		}
 		while (data_transmitted == false)
-			;
+		{
+			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+			if(!dtr)
+				goto done_write;
+		}
 	}
-
+done_write:
 	uart_irq_tx_disable(dev);
 }
 
@@ -114,7 +125,7 @@ void cdc_acm_tx()
 		if(head!= tail)
 		{
 			uint8_t cnt = 0, index = Tx_TAIL;
-			k_busy_wait(CDCACM_TX_DELAY);		
+			k_busy_wait(CDCACM_TX_DELAY);	
 			for (; (index != head) && (cnt < BUFFER_LENGTH);cnt++)
 			{
 				write_buffer[cnt] = (uint8_t)*(Tx_BUFF+index);
@@ -125,6 +136,7 @@ void cdc_acm_tx()
 			if(dtr)
 			{
 				gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
+				flush_usb_txfifo();
 				write_data(dev, (const char*)write_buffer, cnt);
 				gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			}			
@@ -191,7 +203,6 @@ void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
 {
 	uint32_t baudrate, dtr = 0;
 	int ret;
-
 
 	dev = device_get_binding(CONFIG_CDC_ACM_PORT_NAME);
 
@@ -263,11 +274,29 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 	/* Enable rx interrupts */
 	uart_irq_rx_enable(dev);
 
-	while (1) {
-		cdc_acm_tx();
-		cdc_acm_rx();
+	while (1) 
+	{
+		uint32_t dtr = 0;
+		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+		if(dtr)
+		{
+			if(curie_shared_data->cdc_acm_buffers_obj.host_open == false)
+			{
+				curie_shared_data->cdc_acm_buffers_obj.host_open = true;
+			}
+			cdc_acm_tx();
+			cdc_acm_rx();
+		}
+		else
+		{
+			curie_shared_data->cdc_acm_buffers_obj.host_open = false;
+			//reset head and tails values to 0
+			Tx_TAIL = 0;
+			Tx_HEAD = 0;
+			Rx_TAIL = 0;
+			Rx_HEAD = 0;
+		}
 		k_yield();
 	}
-	
 }
 
