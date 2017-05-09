@@ -10,7 +10,6 @@
 
 #define RESET_BAUD              1200
 #define BAUDRATE_RESET_SLEEP    50
-#define TX_DELAY                40
 
 /* Make sure BUFFER_LENGTH is not bigger then shared ring buffers */
 #define BUFFER_LENGTH		128
@@ -20,6 +19,8 @@
 
 #define SERIAL_READ_TIMEOUT	1000
 #define CDCACM_TX_DELAY		5000
+#define CDCACM_TX_TIMEOUT	5000
+#define CDCACM_TX_TIMEOUT_DELAY	10
 
 #define SCSS_RSTC   (uint32_t*)0xb0800570
 
@@ -95,6 +96,7 @@ static void write_data(struct device *dev, const char *buf, int len)
 	for(int i = 0; i < len; i+=4)
 	{
 		data_transmitted = false;
+		int timeout = 0;
 		if((i+4) <= len)
 		{
 			uart_fifo_fill(dev, buf+i, 4);
@@ -107,6 +109,10 @@ static void write_data(struct device *dev, const char *buf, int len)
 		{
 			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
 			if(!dtr)
+				goto done_write;
+				
+			timeout += CDCACM_TX_TIMEOUT_DELAY;
+			if(timeout >= CDCACM_TX_TIMEOUT)
 				goto done_write;
 		}
 	}
@@ -185,6 +191,7 @@ void cdc_acm_rx()
 			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 			break;
 		}
+		gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 	}
 	
 }
@@ -289,12 +296,18 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 		}
 		else
 		{
-			curie_shared_data->cdc_acm_buffers_obj.host_open = false;
-			//reset head and tails values to 0
-			Tx_TAIL = 0;
-			Tx_HEAD = 0;
-			Rx_TAIL = 0;
-			Rx_HEAD = 0;
+			if(curie_shared_data->cdc_acm_buffers_obj.host_open == true)
+			{
+				curie_shared_data->cdc_acm_buffers_obj.host_open = false;
+				flush_usb_txfifo();
+				uart_line_ctrl_set(dev, LINE_CTRL_DCD, 1);
+				uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
+				k_busy_wait(1000000);
+				Tx_TAIL = 0;
+				Tx_HEAD = 0;
+				Rx_TAIL = 0;
+				Rx_HEAD = 0;
+			}
 		}
 		k_yield();
 	}
