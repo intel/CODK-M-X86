@@ -32,18 +32,24 @@
 #define SOFTRESET_INTERRUPT_PIN		0
 
 /* size of stack area used by each thread */
-#define MAIN_STACKSIZE      3072
+#define MAIN_STACKSIZE      2048
+#define CDCACM_STACKSIZE    384
+#define RESET_STACKSIZE     384
+#define USBSERIAL_STACKSIZE 384
 #define FAULTLED_STACKSIZE  256
 
 /* scheduling priority used by each thread */
 #define PRIORITY 7
-#define TASK_PRIORITY 7
+#define TASK_PRIORITY 8
 
 #define ARDUINO_101_VID		0x8087
 #define ARDUINO_101_PID		0x0AB6
 
 #define MAX_DESCRIPTOR_LENGTH	64
 
+char __noinit __stack cdcacm_setup_stack_area[CDCACM_STACKSIZE];
+char __noinit __stack baudrate_reset_stack_area[RESET_STACKSIZE];
+char __noinit __stack usb_serial_stack_area[USBSERIAL_STACKSIZE];
 char __noinit __stack fault_led_stack_area[FAULTLED_STACKSIZE];
 
 const char *vendor = "Intel";
@@ -61,7 +67,7 @@ static void softReset_button_callback(struct device *port, struct gpio_callback 
 	soft_reboot();
 }
 
-void copy_device_descriptor(char *dest, uint8_t *source, const char *default_value, uint8_t len, uint8_t max)
+void copy_device_descriptor(char *dest, uint8_t *source, char *default_value, uint8_t len, uint8_t max)
 {
 	if ((len > 0) && (len < max))
 	{
@@ -103,7 +109,7 @@ void cdc_acm_descriptor_callback (cdc_acm_cfg_t *cfg)
 	}
 }
 
-void threadMain()
+void threadMain(void *dummy1, void *dummy2, void *dummy3)
 {
 
 	init_cdc_acm();
@@ -116,23 +122,17 @@ void threadMain()
 	reset_vector = (uint32_t *)RESET_VECTOR;
 	start_arc(*reset_vector);
 
-	k_thread_spawn(fault_led_stack_area, FAULTLED_STACKSIZE, check_arc_error, NULL, NULL,
+	k_thread_spawn(cdcacm_setup_stack_area, CDCACM_STACKSIZE, cdcacm_setup, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+	
+	k_thread_spawn(baudrate_reset_stack_area, RESET_STACKSIZE, baudrate_reset, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
+	
+	k_thread_spawn(usb_serial_stack_area, USBSERIAL_STACKSIZE, usb_serial, NULL, NULL,
 			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
 
-	cdcacm_setup();
-
-	int i = 0;
-
-	while(1)
-	{
-		if(!(i%10))
-		{
-			baudrate_reset();
-			k_yield();
-		}
-		usb_serial();
-		i++;
-	}
+	k_thread_spawn(fault_led_stack_area, FAULTLED_STACKSIZE, check_arc_error, NULL, NULL,
+			NULL, TASK_PRIORITY, 0, K_NO_WAIT);
 
 }
 
