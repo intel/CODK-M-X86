@@ -8,6 +8,19 @@
 #include "soc_ctrl.h"
 #include "curie_shared_mem.h"
 
+/**
+ * Use the following defines just to make the tips of your finger happier.
+ */
+#define Rx_BUFF curie_shared_data->cdc_acm_shared_rx_buffer.data
+#define Rx_HEAD curie_shared_data->cdc_acm_shared_rx_buffer.head
+#define Rx_TAIL curie_shared_data->cdc_acm_shared_rx_buffer.tail
+#define Rx_LOCK curie_shared_data->cdc_acm_shared_rx_buffer.lock
+#define Tx_BUFF curie_shared_data->cdc_acm_shared_tx_buffer.data
+#define Tx_HEAD curie_shared_data->cdc_acm_shared_tx_buffer.head
+#define Tx_TAIL curie_shared_data->cdc_acm_shared_tx_buffer.tail
+#define Tx_LOCK curie_shared_data->cdc_acm_shared_tx_buffer.lock
+#define SBS     SERIAL_BUFFER_SIZE
+
 #define RESET_BAUD              1200
 #define BAUDRATE_RESET_SLEEP    50
 
@@ -131,21 +144,19 @@ void cdc_acm_tx()
 		if(head!= tail)
 		{
 			uint8_t cnt = 0, index = Tx_TAIL;
-			k_busy_wait(CDCACM_TX_DELAY);	
+			k_busy_wait(CDCACM_TX_DELAY);
 			for (; (index != head) && (cnt < BUFFER_LENGTH);cnt++)
 			{
+				while(Tx_LOCK);
 				write_buffer[cnt] = (uint8_t)*(Tx_BUFF+index);
 				index = (index + 1)% SBS;
 			}
 			Tx_TAIL = (tail + cnt) % SBS;
-			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
-			if(dtr)
-			{
-				gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
-				flush_usb_txfifo();
-				write_data(dev, (const char*)write_buffer, cnt);
-				gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
-			}			
+
+			gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
+			write_data(dev, (const char*)write_buffer, cnt);
+			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
+		
 		}
 		else
 		{
@@ -241,15 +252,16 @@ void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3)
 	ret = uart_line_ctrl_get(dev, LINE_CTRL_BAUD_RATE, &baudrate);
 
 	uart_irq_callback_set(dev, interrupt_handler);
-
-	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
-		
+	flush_usb_txfifo();
 	//reset head and tails values to 0
-	curie_shared_data->cdc_acm_shared_rx_buffer.head = 0;
-	curie_shared_data->cdc_acm_shared_rx_buffer.tail = 0;
-	curie_shared_data->cdc_acm_shared_tx_buffer.head = 0;
-	curie_shared_data->cdc_acm_shared_tx_buffer.tail = 0;
+	Tx_TAIL = 0;
+	Tx_HEAD = 0;
+	Tx_LOCK = 0;
+	Rx_TAIL = 0;
+	Rx_HEAD = 0;
+	Rx_LOCK = 0;
 	usbSetupDone = true;
+	curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 }
 
 void baudrate_reset(void *dummy1, void *dummy2, void *dummy3)
@@ -290,9 +302,15 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 			if(curie_shared_data->cdc_acm_buffers_obj.host_open == false)
 			{
 				curie_shared_data->cdc_acm_buffers_obj.host_open = true;
+				uart_line_ctrl_set(dev, LINE_CTRL_DCD, 1);
+				uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
+				flush_usb_txfifo();
 			}
-			cdc_acm_tx();
-			cdc_acm_rx();
+			else
+			{
+				cdc_acm_tx();
+				cdc_acm_rx();
+			}
 		}
 		else
 		{
@@ -305,8 +323,10 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 				k_busy_wait(1000000);
 				Tx_TAIL = 0;
 				Tx_HEAD = 0;
+				Tx_LOCK = 0;
 				Rx_TAIL = 0;
 				Rx_HEAD = 0;
+				Rx_LOCK = 0;
 			}
 		}
 		k_yield();
