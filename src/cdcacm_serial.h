@@ -8,11 +8,11 @@ void cdc_acm_rx();
 
 void init_cdc_acm();
 
-void cdcacm_setup();
+void cdcacm_setup(void *dummy1, void *dummy2, void *dummy3);
 
-void baudrate_reset();
+void baudrate_reset(void *dummy1, void *dummy2, void *dummy3);
 
-void usb_serial();
+void usb_serial(void *dummy1, void *dummy2, void *dummy3);
 
 #ifdef __cplusplus
 }
