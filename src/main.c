@@ -33,9 +33,9 @@
 
 /* size of stack area used by each thread */
 #define MAIN_STACKSIZE      2048
-#define CDCACM_STACKSIZE    384
+#define CDCACM_STACKSIZE    1024
 #define RESET_STACKSIZE     384
-#define USBSERIAL_STACKSIZE 384
+#define USBSERIAL_STACKSIZE 1024
 #define FAULTLED_STACKSIZE  256
 
 /* scheduling priority used by each thread */
@@ -67,7 +67,7 @@ static void softReset_button_callback(struct device *port, struct gpio_callback 
 	soft_reboot();
 }
 
-void copy_device_descriptor(char *dest, uint8_t *source, char *default_value, uint8_t len, uint8_t max)
+void copy_device_descriptor(char *dest, uint8_t *source, const char *default_value, uint8_t len, uint8_t max)
 {
 	if ((len > 0) && (len < max))
 	{
