@@ -72,10 +72,10 @@ static volatile bool data_arrived = false;
 #define USB_GRSTCTL 0xB0500010
 
 /* Sending messages on channel 6 */
-QUARK_SE_IPM_DEFINE(ipm_send, 6, QUARK_SE_IPM_OUTBOUND);
+QUARK_SE_IPM_DEFINE(cdc_ipm_send, 6, QUARK_SE_IPM_OUTBOUND);
 
 /* Receiving messages on channel 7 */
-QUARK_SE_IPM_DEFINE(ipm_receive, 7, QUARK_SE_IPM_INBOUND);
+QUARK_SE_IPM_DEFINE(cdc_ipm_receive, 7, QUARK_SE_IPM_INBOUND);
 
 static struct device *ipm;
 static struct device *rec_ipm;
@@ -334,8 +334,8 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 	/* Enable rx interrupts */
 	uart_irq_rx_enable(dev);
 
-	ipm = device_get_binding("ipm_send");
-	rec_ipm = device_get_binding("ipm_receive");
+	ipm = device_get_binding("cdc_ipm_send");
+	rec_ipm = device_get_binding("cdc_ipm_receive");
 	ipm_register_callback(rec_ipm, ipm_callback, NULL);
 	ipm_set_enabled(rec_ipm, 1);
 
