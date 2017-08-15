@@ -35,6 +35,7 @@
 #define CDCACM_TX_DELAY		5000
 #define CDCACM_TX_TIMEOUT	5000
 #define CDCACM_TX_TIMEOUT_DELAY	10
+#define CDCACM_TX_LOOP_TIMEOUT	100000
 
 #define SCSS_RSTC   (uint32_t*)0xb0800570
 
@@ -59,6 +60,7 @@ struct device *dev;
 struct device *gpio_dev;
 bool usbSetupDone = false;
 bool enableReboot = false;
+int cdc_acm_tx_loop_timeout = 0;
 
 // buffers
 static unsigned char data_buf[BUFFER_LENGTH];
@@ -84,7 +86,7 @@ static volatile bool received;
 
 void flush_usb_txfifo()
 {
-	*(uint32_t*)USB_GRSTCTL = *(uint32_t*)USB_GRSTCTL | 0x00000020;
+	*(uint32_t*)USB_GRSTCTL = *(uint32_t*)USB_GRSTCTL | 0x00000420;
 }
 
 static void interrupt_handler(struct device *dev)
@@ -114,11 +116,9 @@ static void read_data(struct device *dev, int *bytes_read)
 }
 
 static void write_data(struct device *dev, const char *buf, int len)
-{	
-	uint32_t dtr = 0;
+{
 	uart_irq_tx_enable(dev);
-	
-	for(int i = 0; i < len; i+=4)
+	for(uint8_t i = 0; i < len; i+=4)
 	{
 		data_transmitted = false;
 		int timeout = 0;
@@ -128,19 +128,15 @@ static void write_data(struct device *dev, const char *buf, int len)
 		}
 		else
 		{
-			uart_fifo_fill(dev, buf+i, len-i);
+			uart_fifo_fill(dev, buf+i, len-i);	
 		}
 		while (data_transmitted == false);
 		{
-			uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
-			if(!dtr)
-				goto done_write;
-			
+			k_busy_wait(CDCACM_TX_TIMEOUT_DELAY);
 			timeout += CDCACM_TX_TIMEOUT_DELAY;
 			if(timeout >= CDCACM_TX_TIMEOUT)
 				goto done_write;
 		}
-		
 	}
 done_write:
 	uart_irq_tx_disable(dev);
@@ -179,27 +175,36 @@ void cdc_acm_tx()
 	uint8_t write_buffer[BUFFER_LENGTH];
 	int head = Tx_HEAD;
 	int tail = Tx_TAIL;
+	uint32_t dtr = 0;
 	if (acm_tx_state == ACM_TX_READY) 
 	{
-		if(head!= tail)
+		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+		if(dtr)
 		{
-			k_busy_wait(CDCACM_TX_DELAY);
-			uint8_t cnt = 0, index = Tx_TAIL;
-			for (; (index != head) && (cnt < BUFFER_LENGTH);cnt++)
+			if(head!= tail)
 			{
-				write_buffer[cnt] = Tx_BUFF[index];
-				index = (index + 1)% SBS;
+				k_busy_wait(CDCACM_TX_DELAY);
+				uint8_t cnt = 0, index = Tx_TAIL;
+				for (; (index != head) && (cnt < BUFFER_LENGTH);cnt++)
+				{
+					write_buffer[cnt] = Tx_BUFF[index];
+					index = (index + 1)% SBS;
+				}
+				//try to write wait until their are 4 bytes to be written
+				if((cnt >3) || (cdc_acm_tx_loop_timeout > CDCACM_TX_LOOP_TIMEOUT))
+				{
+					Tx_TAIL = (tail + cnt) % SBS;
+					gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
+					write_data(dev, (const char*)write_buffer, cnt);
+					gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
+					cdc_acm_tx_loop_timeout  = 0;
+				}
+				cdc_acm_tx_loop_timeout += CDCACM_TX_DELAY;
 			}
-			Tx_TAIL = (tail + cnt) % SBS;
+			else
+			{
 
-			gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
-			write_data(dev, (const char*)write_buffer, cnt);
-			gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
-		
-		}
-		else
-		{
-
+			}
 		}
 	}
 	else if (acm_tx_state == ACM_TX_DISABLED) 
@@ -343,14 +348,16 @@ void usb_serial(void *dummy1, void *dummy2, void *dummy3)
 	{
 		uint32_t dtr = 0;
 		uart_line_ctrl_get(dev, LINE_CTRL_DTR, &dtr);
+		gpio_pin_write(gpio_dev, TXRX_LED, 1);	//turn TXRX led off
 		if(dtr)
 		{
 			if(curie_shared_data->cdc_acm_buffers_obj.host_open == false)
 			{
-				curie_shared_data->cdc_acm_buffers_obj.host_open = true;
+				flush_usb_txfifo();
 				uart_line_ctrl_set(dev, LINE_CTRL_DCD, 1);
 				uart_line_ctrl_set(dev, LINE_CTRL_DSR, 1);
-				flush_usb_txfifo();
+				k_busy_wait(1000000);
+				curie_shared_data->cdc_acm_buffers_obj.host_open = true;
 			}
 			else
 			{
