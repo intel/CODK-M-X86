@@ -56,7 +56,7 @@ const char *vendor = "Intel";
 const char *product =  "Arduino 101";
 const char *serial = "00.01";
 
-DEFINE_CODK_FIRMWARE_VERSION("firmware_1.6.0_arduino101");
+DEFINE_CODK_FIRMWARE_VERSION("firmware_1.8.0_arduino101");
 
 struct gpio_callback cb;
 
