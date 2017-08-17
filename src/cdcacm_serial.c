@@ -60,6 +60,7 @@ struct device *dev;
 struct device *gpio_dev;
 bool usbSetupDone = false;
 bool enableReboot = false;
+bool first_ipm_message = true;
 int cdc_acm_tx_loop_timeout = 0;
 
 // buffers
@@ -223,6 +224,12 @@ void cdc_acm_rx()
 
 	if(bytes_read)
 	{
+        char t_buff[MBOX_MSG_LENGTH];
+		if(first_ipm_message)
+		{
+			t_buff[0] = '\0';
+			first_ipm_message = false;
+		}
 		gpio_pin_write(gpio_dev, TXRX_LED, 0);	//turn TXRX led on
 		if (!curie_shared_data->cdc_acm_buffers_obj.device_open) 
 		{
@@ -233,7 +240,6 @@ void cdc_acm_rx()
 		{
 			int i = 0;
 			int j = 0;
-			char t_buff[MBOX_MSG_LENGTH];
 			while(bytes_read)
 			{
 				t_buff[i] = data_buf[j];
